@@ -1,8 +1,8 @@
 import { supabase } from "@/services/supabase";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import { useFocusEffect } from "@react-navigation/native"; // ใช้ดักจับตอนหน้าจอถูกเปิด/กดย้อนกลับ
-import { router } from "expo-router";
-import React, { useCallback, useState } from "react";
+import { Runs } from "@/types";
+import { Ionicons } from "@expo/vector-icons";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -13,190 +13,176 @@ import {
   View,
 } from "react-native";
 
-// 1. กำหนด Interface ให้ตรงกับตาราง runs ใน Supabase
-interface RunRecord {
-  id: number;
-  location: string;
-  distance: number;
-  time_of_day: string;
-  run_date: string;
-  image_url: string;
-}
+const runimg = require("@/assets/images/runlogo.png");
 
 export default function Run() {
-  // สร้าง State สำหรับเก็บข้อมูลและสถานะการรีเฟรช
-  const [runs, setRuns] = useState<RunRecord[]>([]);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+  //สร้าง state เก็บข้อมูลที่ดึงมาจาก Supabase
+  const [runs, setRuns] = useState<Runs[]>([]);
 
-  // 2. ฟังก์ชันดึงข้อมูลทั้งหมดมาจากตาราง runs
-  const fetchRunsData = async () => {
-    setRefreshing(true);
-    try {
-      const { data, error } = await supabase
-        .from("runs")
-        .select("*")
-        .order("id", { ascending: false }); // เอาข้อมูลที่พึ่งบันทึกล่าสุดขึ้นก่อน
-
-      if (error) {
-        Alert.alert("คำเตือน", "พบปัญหาในการดึงข้อมูล กรุณาลองใหม่อีกครั้ง");
-        return;
-      }
-
-      setRuns(data as RunRecord[]);
-    } catch (error) {
-      console.error("Fetch error:", error);
-    } finally {
-      setRefreshing(false);
+  //สร้างฟังก์ชันดึงข้อมูลรายการวิ่งจาก Supabase
+  const fetchRuns = async () => {
+    //ดึง
+    const { data, error } = await supabase.from("runs").select("*");
+    //ตรวจสอบ Error
+    if (error) {
+      Alert.alert("คำเตือน", "ไม่สามารถดึงข้อมูลรายการวิ่งได้ กรุณาลองใหม่");
+      return;
     }
+    //กำหนดข้อมูลที่ดึงมาให้กับ state
+    setRuns(data as Runs[]);
   };
 
-  // 3. ใช้ useFocusEffect เพื่อสั่งให้ fetch ข้อมูลใหม่ทุกครั้งที่หน้านี้แสดงผล (รวมถึงตอนย้อนกลับมา)
+  //เรียกใช้ฟังก์ชันดึงข้อมูล (fetchRuns)
   useFocusEffect(
     useCallback(() => {
-      fetchRunsData();
+      fetchRuns();
     }, []),
   );
 
-  // 4. ฟังก์ชันจัดการโครงสร้างหน้าตาของแต่ละ Item ใน FlatList
-  const renderRunItem = ({ item }: { item: RunRecord }) => (
+  //สร้างฟังก์ชันแสดงหน้าตาของแต่ละรายการที่ FlatList
+  const renderItem = ({ item }: { item: Runs }) => (
     <TouchableOpacity
-      style={styles.cardSty}
-      onPress={() =>
-        router.push({
-          pathname: "/[id]", //
-          params: { ...item },
-        })
-      }
+      style={styles.card}
+      onPress={() => router.push(`/${item.id}`)}
+      activeOpacity={0.7}
     >
-      {/* รูปภาพสถานที่ที่ดึงมาจาก Supabase Storage */}
-      <Image source={{ uri: item.image_url }} style={styles.cardImg} />
-
-      {/* รายละเอียด ชื่อสถานที่ และ วันที่(ช่วงเวลา) */}
       <View style={styles.cardContent}>
-        <Text style={styles.txtLocation} numberOfLines={1}>
-          {item.location}
-        </Text>
-        <Text style={styles.txtDate}>
-          {item.run_date} ({item.time_of_day})
-        </Text>
+        <Image source={{ uri: item.image_url }} style={styles.cardImage} />
+        <View style={styles.distanceBadge}>
+          <Text style={styles.locationText}>{item.location}</Text>
+          <Text style={styles.dateText}>
+            {(() => {
+              const date = new Date(item.run_date);
+              const buddhistYear = "พ.ศ. " + (date.getFullYear() + 543);
+              return (
+                new Intl.DateTimeFormat("th-TH", {
+                  month: "long",
+                  day: "numeric",
+                }).format(date) +
+                " " +
+                buddhistYear
+              );
+            })()}
+          </Text>
+        </View>
+        <Text style={styles.distanceText}>{item.distance} km</Text>
       </View>
 
-      {/* ระยะทางกิโลเมตรและลูกศรฝั่งขวา */}
-      <View style={styles.distanceContainer}>
-        <Text style={styles.txtDistance}>{item.distance} km</Text>
-        <Ionicons name="chevron-forward" size={16} color="#c7c7cc" />
-      </View>
+      <Ionicons name="chevron-forward" size={20} color="#CCC" />
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      {/* ส่วนหัวแสดงรูปภาพโลโก้คนวิ่งด้านบน */}
-      <View style={styles.logoContainer}>
-        <Image
-          source={require("../assets/images/runlogo.png")} // เปลี่ยนเป็น URL รูปจริงของคุณได้ครับ
-          style={styles.runlogo}
-        />
-      </View>
+      {/* ส่วนแสดงรูปด้านบนสุด */}
+      <Image source={runimg} style={styles.imglogo} />
 
-      {/* แสดงรายการการวิ่งทั้งหมด */}
+      {/* ส่วนแสดงข้อมูลรายการวิ่งที่ดึงมาจาก Supabase */}
       <FlatList
         data={runs}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={renderRunItem}
-        contentContainerStyle={{ paddingBottom: 120 }} // เว้นพื้นที่ด้านล่างไม่ให้ปุ่มบวกลอยมาบังการ์ด
-        refreshing={refreshing}
-        onRefresh={fetchRunsData} // ลากจอลงเพื่อดึงข้อมูลใหม่แบบแมนนวลได้ด้วย
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listPadding}
       />
 
-      {/* แสดงปุ่มเปิดไปหน้า Add (โครงสร้างตำแหน่งเดิมของคุณ) */}
+      {/* ส่วนแสดงปุ่มเปิดไปหน้า /add */}
       <TouchableOpacity
-        style={styles.addBtn}
+        style={styles.floatingBtn}
         onPress={() => router.push("/add")}
       >
-        <Ionicons name="add" size={35} color="#ffffff" />
+        <Ionicons name="add" size={30} color="white" />
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#ffffff",
+  listPadding: {
+    padding: 20,
+    paddingBottom: 100, // เว้นที่ให้ FAB
   },
-  logoContainer: {
-    alignItems: "center",
-    marginVertical: 20,
+  distanceText: {
+    fontFamily: "Kanit_700Bold",
+    fontSize: 14,
+    color: "#007AFF",
   },
-  runlogo: {
-    width: 150,
-    height: 150,
+  dateText: {
+    fontFamily: "Kanit_400Regular",
+    fontSize: 14,
+    color: "#888",
   },
-  addBtn: {
-    position: "absolute",
-    bottom: 50,
-    right: 50,
-    width: 60, // ปรับขนาดเพิ่มขึ้นนิดหน่อยให้รับกับไอคอนด้านในอย่างสวยงาม
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#0facf5", // สีฟ้าเดิมของคุณ
-    justifyContent: "center",
-    alignItems: "center",
-    // เพิ่มเงาให้ปุ่มดูนูนขึ้นมา
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+  locationText: {
+    fontFamily: "Kanit_700Bold",
+    fontSize: 18,
+    color: "#333",
+    marginBottom: 4,
   },
-  // --- สไตล์ส่วนของรายการการ์ดแสดงผล ---
-  cardSty: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 20,
-    marginVertical: 8,
-    padding: 12,
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    borderWidth: 0.5,
-    borderColor: "#efefef",
-    // เงาสำหรับการ์ด
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
+  distanceBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  cardImg: {
-    width: 70,
-    height: 70,
-    borderRadius: 12,
-    backgroundColor: "#eee",
+  cardImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 10,
   },
   cardContent: {
     flex: 1,
-    marginLeft: 15,
-    justifyContent: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginRight: 10,
   },
-  txtLocation: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  txtDate: {
-    fontSize: 12,
-    color: "#747474",
-    marginTop: 5,
-  },
-  distanceContainer: {
+  card: {
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
+    // Shadow สำหรับ iOS
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    // Elevation สำหรับ Android
+    elevation: 3,
   },
-  txtDistance: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#0facf5", // ใช้สีฟ้าธีมเดียวกับปุ่มของคุณ
-    marginRight: 5,
+  imgShow: {
+    width: 50,
+    height: 50,
+  },
+  cardItem: {
+    flex: 1,
+    flexDirection: "row",
+    margin: 5,
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    padding: 10,
+  },
+  imglogo: {
+    width: 120,
+    height: 120,
+    marginTop: 40,
+    margin: "auto",
+  },
+  floatingBtn: {
+    padding: 10,
+    backgroundColor: "#1889da",
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    bottom: 60,
+    right: 40,
+    elevation: 3,
+  },
+  container: {
+    flex: 1,
   },
 });
